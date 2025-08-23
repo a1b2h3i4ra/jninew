@@ -1,124 +1,144 @@
 #pragma once
+#include <KittyMemory.h>
+#include <KittyUtils.h>
 
-#include <sys/un.h>
-#include <fcntl.h>
-#include <sys/syscall.h>
-#include <sys/types.h>
-#include <sys/uio.h>
-#include <sys/mman.h>
-#include <inttypes.h>
-#include <cstring>
-#include <cstdio>
-#include <cstdlib>
+//Hook Utils
+static unsigned long FindLibrary(const char *library) {
+  char filename[0xFF] = {0},
+       buffer[1024] = {0};
+  FILE *fp = NULL;
+  unsigned long address = 0;
+
+  sprintf(filename, "/proc/%d/maps", getpid());
+
+  fp = fopen(filename, "rt");
+  if (fp == NULL) {
+    goto done;
+  }
+
+  while (fgets(buffer, sizeof(buffer), fp)) {
+    if (strstr(buffer, library)) {
+      address = strtoul(buffer, NULL, 16);
+      if (address == 0x8000)
+        address = 0;
+      break;
+    }
+  }
+
+  done:
+
+  if (fp) {
+    fclose(fp);
+  }
+
+  return address;
+}
+
+uint32_t FindPattern(const char *lib, const char* bytes) {
+    return  KittyMemory::findIdaPatternAddress(lib, bytes);
+}
+
+uint64_t get_module_base(pid_t pid, const char *module_name) {
+    FILE *fp;
+    uint64_t addr = 0;
+    char *pch;
+    char filename[32];
+    char line[512];
+
+    snprintf(filename, sizeof(filename), "/proc/%d/maps", pid);
+
+    fp = fopen(filename, "r");
+
+    if (fp != NULL) {
+        while (fgets(line, sizeof(line), fp)) {
+            if (strstr(line, module_name)) {
+                pch = strtok(line, "-");
+                addr = strtoull(pch, NULL, 16);
+
+                if (addr == 0x8000)
+                    addr = 0;
+
+                break;
+            }
+        }
+        fclose(fp);
+    }
+    return addr;
+}
+
+// ===== ENHANCED TOOLS FROM NEW JNI =====
 #include <Dobby/dobby.h>
 
-typedef unsigned long ulong;
-
-#if defined(__arm__)
-#include <SubstrateHook.h>
-#elif defined(__aarch64__)
-#include <And64InlineHook.hpp>
-#endif
-
-#define LOG_TAG "Aneko"
-#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
-#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
-
-void hook(void *address, void *new_fn, void **old_fn);
-#define HOOK(address, new_fn, old_fn) hook(reinterpret_cast<void*>((address)), reinterpret_cast<void*>(new_fn), reinterpret_cast<void**>(old_fn));
-
-inline pid_t pid = 0;
-
-inline void hook(void *address, void *new_fn, void **old_fn) {
-#if defined(__arm__)
-    MSHookFunction(address, new_fn, old_fn);
-#elif defined(__aarch64__)
-    A64HookFunction(address, new_fn, old_fn);
-#endif
-}
-
-inline uintptr_t get_module_base(int pid, const char *module_name)
-{
-	FILE *fp;
-	uintptr_t addr = 0;
-	char *pch;
-	char filename[32];
-	char line[1024];
-	snprintf(filename, sizeof(filename), "/proc/%d/maps", pid);
-	fp = fopen(filename, "r");
-	if (fp != NULL)
-	{
-		while (fgets(line, sizeof(line), fp))
-		{
-			if (strstr(line, module_name))
-			{
-				pch = strtok(line, "-");
-				addr = (uintptr_t)strtoul(pch, NULL, 16);
-				break;
-			}
-		}
-		fclose(fp);
-	}
-	return addr;
-}
-
-/*
-#if defined(__arm__)
-int process_vm_readv_syscall = 376;
-int process_vm_writev_syscall = 377;
-#elif defined(__aarch64__)
-int process_vm_readv_syscall = 270;
-int process_vm_writev_syscall = 271;
-#elif defined(__i386__)
-int process_vm_readv_syscall = 347;
-int process_vm_writev_syscall = 348;
-#else
-int process_vm_readv_syscall = 310;
-int process_vm_writev_syscall = 311;
-#endif
-
-
-inline ssize_t process_v(pid_t __pid, struct iovec* __local_iov, ulong __local_iov_count, struct iovec* __remote_iov, ulong __remote_iov_count, ulong __flags) {
-	return syscall(process_vm_readv_syscall, __pid, __local_iov, __local_iov_count, __remote_iov, __remote_iov_count, __flags);
-}
-
-inline ssize_t process_vm_writev(pid_t __pid, struct iovec* __local_iov, ulong __local_iov_count, struct iovec* __remote_iov, ulong __remote_iov_count, ulong __flags) {
-	return syscall(process_vm_writev_syscall, __pid, __local_iov, __local_iov_count, __remote_iov, __remote_iov_count, __flags);
-}
-
-inline int pvm(uintptr_t address, void* buffer,int size) {
-	struct iovec local[1];
-	struct iovec remote[1];
-
-	local[0].iov_base = buffer;
-	local[0].iov_len = size;
-	remote[0].iov_base = (void*)address;
-	remote[0].iov_len = size;
-
-    ssize_t bytes = process_v(pid, local, 1, remote, 1, 0);
-	return bytes == size;
-}
-
-inline bool pvms(void* address, void* buffer, size_t size, bool iswrite) {
-    struct iovec local[1];
-    struct iovec remote[1];
-    local[0].iov_base = buffer;
-    local[0].iov_len = size;
-    remote[0].iov_base = address;
-    remote[0].iov_len = size;
-    if (pid < 0) {
-        return false;
+namespace Tools {
+    void Hook(void *target, void *replace, void **backup) {
+        DobbyHook(target, replace, backup);
     }
-    ssize_t bytes = syscall((iswrite ? process_vm_writev_syscall : process_vm_readv_syscall), pid, local, 1, remote, 1, 0);
-    return bytes == size;
-}
+    
+    bool Read(void *addr, void *buffer, size_t length) {
+        return KittyMemory::memRead(addr, buffer, length);
+    }
+    
+    bool Write(void *addr, void *buffer, size_t length) {
+        return KittyMemory::memWrite(addr, buffer, length);
+    }
+    
+    bool ReadAddr(void *addr, void *buffer, size_t length) {
+        return KittyMemory::memRead2(addr, buffer, length);
+    }
+    
+    bool WriteAddr(void *addr, void *buffer, size_t length) {
+        return KittyMemory::memWrite2(addr, buffer, length);
+    }
 
-inline bool vm_readv(void* address, void* buffer, size_t size) {
-    return pvms(address, buffer, size, false);
-}
+    bool PVM_ReadAddr(void *addr, void *buffer, size_t length) {
+        return KittyMemory::pvm_readv(addr, buffer, length);
+    }
+    
+    bool PVM_WriteAddr(void *addr, void *buffer, size_t length) {
+        return KittyMemory::pvm_writev(addr, buffer, length);
+    }
 
-inline bool vm_writev(void* address, void* buffer, size_t size) {
-    return pvms(address, buffer, size, true);
-}*/
+    bool IsPtrValid(void *addr) {
+        return KittyMemory::isValidAddress(addr);
+    }
+
+    uintptr_t GetBaseAddress(const char *name) {
+        return KittyMemory::getLibraryBaseAddress(name);
+    }
+    
+    uintptr_t GetEndAddress(const char *name) {
+        return KittyMemory::getLibraryEndAddress(name);
+    }
+    
+    uintptr_t FindPattern(const char *lib, const char* pattern) {
+        return KittyMemory::findIdaPatternAddress(lib, pattern);
+    }
+
+    std::string RandomString(const int len) {
+        std::string tmp_s;
+        static const char alphanum[] =
+            "0123456789"
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            "abcdefghijklmnopqrstuvwxyz";
+        
+        srand((unsigned) time(NULL) * getpid());
+
+        tmp_s.reserve(len);
+
+        for (int i = 0; i < len; ++i) 
+            tmp_s += alphanum[rand() % (sizeof(alphanum) - 1)];
+        
+        return tmp_s;
+    }
+    
+    std::string GetPackageName(JNIEnv *env, jobject context) {
+        jclass contextClass = env->FindClass("android/content/Context");
+        jmethodID getPackageNameMethod = env->GetMethodID(contextClass, "getPackageName", "()Ljava/lang/String;");
+        jstring packageNameString = (jstring) env->CallObjectMethod(context, getPackageNameMethod);
+        const char *packageName = env->GetStringUTFChars(packageNameString, 0);
+        std::string result(packageName);
+        env->ReleaseStringUTFChars(packageNameString, packageName);
+        return result;
+    }
+}
+// ===== END ENHANCED TOOLS =====

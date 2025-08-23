@@ -5,21 +5,32 @@
 #include <string>
 #include <Struct/tools.hpp>
 
-struct cfg {
-    bool aimbot;
-    int aim_type = 0;
-    int aim_target = 1;
-    struct _esp {
-        bool Box;
-        bool Line;
-        bool Health;
-        bool Distance;
-        bool IsName;
-        bool Path;       
-        bool Esp360;
-        bool Target;
-    }ESP;
-}inline Config;
+typedef unsigned long DWORD;
+struct Config_t {
+    struct {
+        bool Line = false;
+        bool Box = false;
+        bool Target = false;
+    } ESP;
+};
+
+struct Config_t Config;
+
+typedef unsigned long ulong;
+inline pid_t pid = 0;
+
+typedef unsigned long DWORD;
+static uintptr_t libBase;
+
+// FontAwesome Icons for Enhanced GUI
+#define ICON_FA_GAMEPAD "\xef\x84\x9b"  // 
+#define ICON_FA_EYE "\xef\x81\xae"      // 
+#define ICON_FA_BARS "\xef\x83\x89"     // 
+#define ICON_FA_COGS "\xef\x85\x93"     // 
+
+// Enhanced feature variables
+static bool Enhanced_Theme_Enabled = false;
+static int Theme_Selection = 0;
 
 inline std::map < std::string, void*> _methods;
 inline std::map < std::string, size_t > _fields;
