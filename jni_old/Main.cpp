@@ -2,6 +2,7 @@
 #include <unistd.h>
 #include <thread>
 #include <limits>
+#include <vector>
 
 #include <xdl.h>
 #include <KittyUtils.h>
@@ -15,11 +16,90 @@
 #include "ImGui/Toggle.h"
 #include "zygisk.hpp"
 
+// Enhanced includes for advanced features
+#include "Struct/tools.hpp"
+
 using zygisk::Api;
 using zygisk::AppSpecializeArgs;
 using zygisk::ServerSpecializeArgs;
 
 void hack();
+
+// ===== ADVANCED VISUAL EFFECTS FROM NEW JNI =====
+#include <ctime>
+#include <cstdio>
+
+void DrawNetBackground(const ImVec2& window_pos, const ImVec2& window_size, float time) {
+    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+
+    // Parameters for the net
+    const float grid_spacing = 40.0f; // Distance between grid points
+    const float amplitude = 5.0f;     // Amount of vertical oscillation for animation
+    const int cols = static_cast<int>(window_size.x / grid_spacing) + 2;
+    const int rows = static_cast<int>(window_size.y / grid_spacing) + 2;
+
+    ImU32 line_color = ImGui::GetColorU32(ImVec4(0.0f, 0.6f, 0.0f, 0.6f)); // Semi-transparent green
+    ImU32 point_color = ImGui::GetColorU32(ImVec4(0.0f, 1.0f, 0.0f, 0.8f)); // Bright green for points
+
+    // Store points with animation offset
+    std::vector<ImVec2> points(rows * cols);
+
+    // Calculate points with vertical wave animation
+    for (int row = 0; row < rows; ++row) {
+        for (int col = 0; col < cols; ++col) {
+            float x = window_pos.x + col * grid_spacing;
+            float y = window_pos.y + row * grid_spacing;
+
+            // Animate y with sine wave based on time and position for glowing wave effect
+            float offset = sinf(time * 3.0f + (col + row) * 0.5f) * amplitude;
+            points[row * cols + col] = ImVec2(x, y + offset);
+        }
+    }
+
+    // Draw horizontal lines
+    for (int row = 0; row < rows; ++row) {
+        for (int col = 0; col < cols - 1; ++col) {
+            draw_list->AddLine(points[row * cols + col], points[row * cols + col + 1], line_color, 1.0f);
+        }
+    }
+
+    // Draw vertical lines
+    for (int col = 0; col < cols; ++col) {
+        for (int row = 0; row < rows - 1; ++row) {
+            draw_list->AddLine(points[row * cols + col], points[(row + 1) * cols + col], line_color, 1.0f);
+        }
+    }
+
+    // Draw points
+    for (const auto& pt : points) {
+        draw_list->AddCircleFilled(pt, 2.0f, point_color);
+    }
+}
+
+ImVec4 RainbowColor(float t) {
+    float r = sinf(t * 6.283185f) * 0.5f + 0.5f;
+    float g = sinf(t * 6.283185f + 2.094f) * 0.5f + 0.5f;
+    float b = sinf(t * 6.283185f + 4.188f) * 0.5f + 0.5f;
+    return ImVec4(r, g, b, 1.0f);
+}
+
+time_t GetExpiryTimestamp(const char* expiry_date_str) {
+    // expiry_date_str format is "DD-MM-YY"
+    struct tm expiry_tm = {0};
+    int day, month, year;
+    if (sscanf(expiry_date_str, "%d-%d-%d", &day, &month, &year) != 3) {
+        return 0; // invalid format fallback, never expires
+    }
+    expiry_tm.tm_mday = day;
+    expiry_tm.tm_mon = month - 1; // tm_mon is 0-11
+    expiry_tm.tm_year = (year < 100) ? (year + 100) : year; // 2000-based year (e.g., 25 -> 2025)
+    expiry_tm.tm_hour = 0;
+    expiry_tm.tm_min = 0;
+    expiry_tm.tm_sec = 0;
+    expiry_tm.tm_isdst = -1; // let system determine
+    return mktime(&expiry_tm);
+}
+// ===== END ADVANCED VISUAL EFFECTS =====
 
 class MyModule : public zygisk::ModuleBase {
  public:
@@ -191,29 +271,227 @@ inline EGLBoolean hook_eglSwapBuffers(EGLDisplay dpy, EGLSurface surface) {
     }
 	
     DrawESP(g_GlWidth, g_GlHeight);
-    ImGui::SetNextWindowSize(ImVec2((float) g_GlWidth * 0.30f, (float) g_GlHeight * 0.52f), ImGuiCond_Once); // 45% width 70% height
-         // Zygisk Menu // You can Change here
-         if (ImGui::Begin(OBFUSCATE("Zygisk [ x32/x64 ]" ), 0, ImGuiWindowFlags_NoBringToFrontOnFocus)) {
+    
+    // Enhanced Menu with Advanced Features from New JNI
+    static time_t expiry_timestamp = GetExpiryTimestamp("28-08-25"); // Set your ModMenu Expiry date
+    time_t now = time(nullptr);
+    ImVec2 window_size = ImGui::GetIO().DisplaySize;
+
+    // If expired, show expiry message centered and skip rest of menu
+    if (now > expiry_timestamp && expiry_timestamp != 0) {
+        ImGui::SetNextWindowBgAlpha(0.75f);
+        ImGui::SetNextWindowPos(ImVec2(window_size.x / 2, window_size.y / 2), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+        ImGui::Begin("EXPIRED", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+        ImGui::TextColored(ImVec4(1, 0, 0, 1), "- Note : ModMenu is expired -");
+        ImGui::End();
+        return old_eglSwapBuffers(dpy, surface); // Exit early if expired
+    }
+
+    const ImVec2 windowDim = ImVec2(700, 700);
+    ImGui::SetNextWindowSize(windowDim, ImGuiCond_Once);
+    
+    // Enhanced main window with new features
+    if (ImGui::Begin(ICON_FA_GAMEPAD " ZYGISK [x64/x32]")) {
+        ImVec2 pos = ImGui::GetWindowPos();
+        ImVec2 size = ImGui::GetWindowSize();
+        float time = ImGui::GetTime();
+        DrawNetBackground(pos, size, time);
         
-			 
-			 Toggle(OBFUSCATE("Enable Esp"), &Enable);          
-             Toggle(OBFUSCATE("Enable Line"), &Config.ESP.Line); 
-             Toggle(OBFUSCATE("Enable Box"), &Config.ESP.Box); 
-             Toggle(OBFUSCATE("Target Enemy"), &Config.ESP.Target); 
-			 
-			 
-			 Toggle("Enable AimBot Head", &Aimbot);                           
-             ImGui::Combo("##AimDir",&AimWhen,dir,IM_ARRAYSIZE(dir));
-             if(AimWhen == 0) {
-             }
-             else if(AimWhen == 1){
-             }
-             else if(AimWhen == 2) {
-             }
-             ImGui::SliderFloat(OBFUSCATE("RangeFov"),&Fov_Aim,0.0f,500.0f,"%.f");  
-             ImGui::SliderFloat(OBFUSCATE("Distance"),&Aimdis,0.0f,1000.0f,"%.f");
-                    
-         }
+        static int activeTab = 0;
+        float windowWidth = ImGui::GetContentRegionAvail().x;
+
+        // Advanced Tab buttons layout with rainbow effects
+        float spacing = 8.0f;
+        int tabCount = 3;
+        float buttonWidth = (windowWidth - spacing * (tabCount - 1)) / tabCount;
+        float buttonHeight = 48.0f;
+
+        ImDrawList* draw_list = ImGui::GetWindowDrawList();
+
+        auto TabButton = [&](const char* label, int id) {
+            ImVec2 btn_pos = ImGui::GetCursorScreenPos();
+            ImGuiStyle& style = ImGui::GetStyle();
+
+            float oldRounding = style.FrameRounding;
+            style.FrameRounding = 0.0f;
+
+            ImVec2 btn_size(buttonWidth, buttonHeight);
+
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
+            bool pressed = ImGui::Button(label, btn_size);
+            ImGui::PopStyleVar();
+
+            if (pressed)
+                activeTab = id;
+
+            style.FrameRounding = oldRounding;
+
+            // Rainbow border effect for active tab
+            if (activeTab == id) {
+                ImVec2 min = btn_pos;
+                ImVec2 max = ImVec2(btn_pos.x + btn_size.x, btn_pos.y + btn_size.y);
+                float thickness = 3.0f;
+                int segments = 80;
+
+                for (int i = 0; i < segments; i++) {
+                    float t0 = (float)i / segments;
+                    float t1 = (float)(i + 1) / segments;
+                    float shift = time * 0.5f;
+                    ImVec4 col0 = RainbowColor(t0 + shift);
+                    ImU32 c0 = ImGui::GetColorU32(col0);
+
+                    ImVec2 p0, p1;
+                    if (i < segments / 4) {
+                        p0 = ImVec2(min.x + btn_size.x * (t0 * 4), min.y);
+                        p1 = ImVec2(min.x + btn_size.x * (t1 * 4), min.y);
+                    } else if (i < segments / 2) {
+                        float tt0 = (t0 - 0.25f) * 4;
+                        float tt1 = (t1 - 0.25f) * 4;
+                        p0 = ImVec2(max.x, min.y + btn_size.y * tt0);
+                        p1 = ImVec2(max.x, min.y + btn_size.y * tt1);
+                    } else if (i < 3 * segments / 4) {
+                        float tt0 = (t0 - 0.5f) * 4;
+                        float tt1 = (t1 - 0.5f) * 4;
+                        p0 = ImVec2(max.x - btn_size.x * tt0, max.y);
+                        p1 = ImVec2(max.x - btn_size.x * tt1, max.y);
+                    } else {
+                        float tt0 = (t0 - 0.75f) * 4;
+                        float tt1 = (t1 - 0.75f) * 4;
+                        p0 = ImVec2(min.x, max.y - btn_size.y * tt0);
+                        p1 = ImVec2(min.x, max.y - btn_size.y * tt1);
+                    }
+
+                    draw_list->AddLine(p0, p1, c0, thickness);
+                }
+            }
+        };
+
+        // Draw enhanced tab buttons
+        for (int i = 0; i < tabCount; i++) {
+            if (i > 0) ImGui::SameLine(0, spacing);
+            if (i == 0) TabButton(ICON_FA_EYE " Visual", 0);
+            else if (i == 1) TabButton(ICON_FA_BARS " Memory", 1);
+            else if (i == 2) TabButton(ICON_FA_COGS " Setting", 2);
+        }
+
+        ImGui::Separator();
+
+        float spacingChild = 8.0f;
+
+        // Enhanced Visual Tab
+        if (activeTab == 0) {
+            float halfWidth = (windowWidth - spacingChild) / 2.0f;
+
+            ImGui::BeginChild("left", ImVec2(halfWidth, 0), true);
+            ImGui::PushItemWidth(-1); // full width of child
+            
+            Toggle(OBFUSCATE("Enable Esp"), &Enable);          
+            Toggle(OBFUSCATE("Enable Line"), &Config.ESP.Line); 
+            Toggle(OBFUSCATE("Enable Box"), &Config.ESP.Box); 
+            Toggle(OBFUSCATE("Target Enemy"), &Config.ESP.Target); 
+            
+            ImGui::PopItemWidth();
+            ImGui::EndChild();
+
+            ImGui::SameLine(0, spacingChild);
+
+            ImGui::BeginChild("right", ImVec2(0, 0), true);
+            ImGui::PushItemWidth(-1);
+            
+            Toggle("Enable AimBot Head", &Aimbot);                           
+            ImGui::Combo("##AimDir",&AimWhen,dir,IM_ARRAYSIZE(dir));
+            if(AimWhen == 0) {
+            }
+            else if(AimWhen == 1){
+            }
+            else if(AimWhen == 2) {
+            }
+            ImGui::SliderFloat(OBFUSCATE("RangeFov"),&Fov_Aim,0.0f,500.0f,"%.f");  
+            ImGui::SliderFloat(OBFUSCATE("Distance"),&Aimdis,0.0f,1000.0f,"%.f");
+            
+            ImGui::PopItemWidth();
+            ImGui::EndChild();
+        }
+
+        // Enhanced Memory Tab
+        if (activeTab == 1) {
+            float halfWidth = (windowWidth - spacingChild) / 2.0f;
+
+            ImGui::BeginChild("left_memory", ImVec2(halfWidth, 0), true);
+            ImGui::PushItemWidth(-1);
+            ImGui::Text("Game Modifiers");
+            ImGui::Separator();
+            
+            // Example memory hacks with better organization
+            static bool unlimited_health = false;
+            static bool unlimited_ammo = false;
+            static bool god_mode = false;
+            static bool speed_hack = false;
+            
+            Toggle("Unlimited Health", &unlimited_health);
+            Toggle("Unlimited Ammo", &unlimited_ammo);
+            Toggle("God Mode", &god_mode);
+            Toggle("Speed Hack", &speed_hack);
+            
+            ImGui::PopItemWidth();
+            ImGui::EndChild();
+
+            ImGui::SameLine(0, spacingChild);
+
+            ImGui::BeginChild("right_memory", ImVec2(0, 0), true);
+            ImGui::PushItemWidth(-1);
+            ImGui::Text("Advanced Features");
+            ImGui::Separator();
+            
+            static bool wall_hack = false;
+            static bool fly_hack = false;
+            static bool teleport = false;
+            static float fov_modifier = 90.0f;
+            
+            Toggle("Wall Hack", &wall_hack);
+            Toggle("Fly Hack", &fly_hack);
+            Toggle("Teleport", &teleport);
+            ImGui::SliderFloat("FOV Modifier", &fov_modifier, 60.0f, 180.0f, "%.1f");
+            
+            ImGui::PopItemWidth();
+            ImGui::EndChild();
+        }
+
+        // Enhanced Settings Tab
+        if (activeTab == 2) {
+            ImGui::BeginChild("settings_tab", ImVec2(0, 0), true);
+            ImGui::PushItemWidth(-1);
+            ImGui::Text("Enhanced Settings");
+            ImGui::Separator();
+            
+            // Theme Selection
+            static const char* themes[] = { "Default Dark", "Allan Theme", "Enhanced Dark" };
+            static int current_theme = 0;
+            if (ImGui::Combo("GUI Theme", &current_theme, themes, IM_ARRAYSIZE(themes))) {
+                switch(current_theme) {
+                    case 0:
+                        SetDarkGrayTheme();
+                        break;
+                    case 1:
+                        AdvancedThemes::SetAllanTheme();
+                        break;
+                    case 2:
+                        AdvancedThemes::SetDarkTheme();
+                        break;
+                }
+            }
+            
+            ImGui::Separator();
+            ImGui::Text("Visual Effects");
+            static bool enable_rainbow_tabs = true;
+            ImGui::Checkbox("Rainbow Tab Effects", &enable_rainbow_tabs);
+            
+            static bool enable_net_background = true;
+            ImGui::Checkbox("Animated Net Background", &enable_net_background);
+            
+            ImGui::PopItemWidth();
+            ImGui::EndChild();
+        }
          
          
          
@@ -234,8 +512,9 @@ static uintptr_t libBase;
 inline void StartGUI() {
     void *ptr_eglSwapBuffer = DobbySymbolResolver("/system/lib/libEGL.so", "eglSwapBuffers");
     if (ptr_eglSwapBuffer != nullptr) {
-        DobbyHook((void *)ptr_eglSwapBuffer, (void *)hook_eglSwapBuffers, (void **)&old_eglSwapBuffers);
-        LOGD("GUI started successfully");
+        // Use enhanced Tools namespace for hooking
+        Tools::Hook((void *)ptr_eglSwapBuffer, (void *)hook_eglSwapBuffers, (void **)&old_eglSwapBuffers);
+        LOGD("Enhanced GUI started successfully with advanced features");
     }
 }
 
