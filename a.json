@@ -1,0 +1,36 @@
+{
+  "v": 1,
+  "branding": {
+    "logo_text": "VIP FARUK 999",
+    "logo_font_scale": 1.0,
+    "logo_color_rgba": [0.98, 0.99, 1.0, 1.0],
+    "show_logo": true
+  },
+  "ui": {
+    "main_size": { "w_pct": 0.85, "h_pct": 0.90 },
+    "menu_fixed": true,
+    "login_fixed": true,
+    "header_strip": false
+  },
+  "features": {
+    "aimbot": { "visible": true },
+    "esp":    { "visible": true }
+  },
+  "esp": {
+    "box": true,
+    "line": true,
+    "name": true,
+    "color_index": 0
+  },
+  "aimbot": {
+    "fov_default": 85,
+    "headshot_percent_default": 100,
+    "force_head_sniper": true,
+    "force_head_hipfire": false
+  },
+  "safety": {
+    "limit_headshot_if_flagged": false,
+    "headshot_cap_percent": 85
+  },
+  "kill_switch": false
+}
