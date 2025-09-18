@@ -1,14 +1,12 @@
 {
   "v": 2,
 
-  "branding": {
-    "logo_text": "VIP FARUK 999",
-    "logo_font_scale": 1.0,
-    "logo_color_rgba": [0.98, 0.99, 1.0, 1.0],
-    "show_logo": true,
-    "logo_clickable": true,
-    "logo_click_padding": [28, 16]
-  },
+"branding": {
+  "logo_text": "VIP FARUK 999",
+  "logo_font_scale": 1.25,
+  "logo_color_rgba": [0.98, 0.99, 1.0, 1.0],
+  "show_logo": true
+},
 
   "ui": {
     "main_size": { "w_pct": 0.85, "h_pct": 0.90 },
